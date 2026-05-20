@@ -1,5 +1,18 @@
+# Node.js
 node_modules/
 .env
 dist/
 .DS_Store
 *.log
+
+# Build artifacts
+.cache/
+.parcel-cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
