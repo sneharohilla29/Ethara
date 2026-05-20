@@ -21,9 +21,22 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // CORS configuration
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://localhost:5000',
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: function (origin, callback) {
+      // Allow requests with no origin (mobile apps, curl, same-origin in production)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.some((allowed) => origin.startsWith(allowed))) {
+        return callback(null, true);
+      }
+      callback(null, true); // Allow all in case of Railway auto-generated domains
+    },
     credentials: true,
   })
 );
@@ -39,25 +52,26 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/invitations', invitationRoutes);
 
+// Error handler for API routes
+app.use(errorHandler);
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '..', 'client', 'dist');
   app.use(express.static(clientDist));
 
+  // SPA fallback — serve index.html for any non-API route
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(clientDist, 'index.html'));
   });
 }
 
-// Error handler (must be last)
-app.use(errorHandler);
-
 // Connect to DB then start server
 const startServer = async () => {
   try {
     await connectDB();
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
     });
   } catch (error) {
     console.error(`Failed to start server: ${error.message}`);
