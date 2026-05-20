@@ -2,6 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
+import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import errorHandler from './middleware/errorHandler.js';
@@ -55,27 +57,50 @@ app.use('/api/invitations', invitationRoutes);
 // Error handler for API routes
 app.use(errorHandler);
 
-// Serve static assets in production
-if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+// Health check endpoint
+app.get('/health', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting',
+  }[dbState] || 'unknown';
+
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: dbStatus,
+    env: process.env.NODE_ENV || 'development',
+  });
+});
+
+// Serve static assets if client build exists
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientDist)) {
+  console.log(`Serving static files from: ${clientDist}`);
   app.use(express.static(clientDist));
 
   // SPA fallback — serve index.html for any non-API route
-  app.get('*', (req, res) => {
+  app.get('*any', (req, res) => {
     res.sendFile(path.resolve(clientDist, 'index.html'));
   });
+} else {
+  console.warn(`WARNING: Client build directory not found at ${clientDist}.`);
+  console.warn('The frontend static files will not be served.');
 }
 
-// Connect to DB then start server
+// Start server first (so Railway/Render detects the port), then connect to DB
 const startServer = async () => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+  });
+
   try {
     await connectDB();
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
-    });
   } catch (error) {
-    console.error(`Failed to start server: ${error.message}`);
-    process.exit(1);
+    console.error(`Failed to connect to MongoDB: ${error.message}`);
+    console.error('Server is running but database is unavailable. API requests will fail.');
   }
 };
 
